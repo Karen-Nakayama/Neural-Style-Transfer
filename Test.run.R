@@ -1,3 +1,122 @@
+
+# load all the images
+
+# get VGG feature representations of them
+
+library(keras)
+library(dplyr)
+library(stringr)
+library(purrr)
+library(R6)
+
+conv_base <- application_vgg16(
+  weights = "imagenet", #importing the model
+  include_top = FALSE, #importing the model
+  input_shape = c(128,128,3) #define the image 128x128 3 channels RBG
+)
+
+conv_base %>% summary() #gives what layers are in the conv_base
+
+# the gram matrix of an image tensor (feature-wise outer product)
+
+gram_matrix <- function(x){
+  
+  features <- x %>%
+    k_permute_dimensions(pattern = c(3, 1, 2)) %>%
+    k_batch_flatten()
+  
+  k_dot(features, k_transpose(features))
+}
+
+# #5 layers we need into ___ 
+# nms <- map_chr(conv_base$layers, ~.x$name)
+# output_dict <- map(conv_base$layers, ~.x$output) %>% set_names(nms)
+# layer_features <- output_dict$block4_conv2
+# feature_layers = c('block1_conv1', 'block2_conv1',
+#                    'block3_conv1', 'block4_conv1',
+#                    'block5_conv1')
+# 
+# extract_matrix <- function(x){
+#   
+#   for(layer_name in feature_layers){
+#     layer_features <- output_dict[[layer_name]]
+#     style_reference_features <- layer_features[2,,,]
+#     style_matrix <- gram_matrix(style_reference_features)
+#   }
+#   
+# }
+
+
+# model.a <- keras_model(inputs = conv_base$input,
+#                      outputs = get_layer(conv_base, 'block2_pool')$output)
+# 
+# 
+# model.b <- keras_model(inputs = conv_base$input,
+#                      outputs = get_layer(conv_base, 'block3_pool')$output)
+
+
+model.c <- keras_model(inputs = conv_base$input,#input of conv_base
+                       outputs = get_layer(conv_base, 'block1_conv1')$output)#clarifying which layer we want
+
+
+model.c %>% summary() #summary of model.c
+
+#loading image and target size is 128x128 same as input
+im <- image_load('/Users/karennakayama/Desktop/Eugène_Delacroix_-_La_liberté_guidant_le_peuple.jpg', target_size = c(128,128)) %>%
+  image_to_array() %>%
+  array_reshape(c(1,dim(.))) %>%
+  imagenet_preprocess_input(mode="tf")
+
+features <- model.c %>% predict(im) #calling model.c and process as loaded 128x128, 
+#predict the output of im (run the model) based on the features we got on model.c
+
+gm <- gram_matrix(features[1,,,]) #gram matrix wants us to specify which part of features we want it to¥
+#run, there's only 1, so we're listing 1. gm is a tensor object
+
+gm.mat <- as.matrix(gm) #changing the tensor object into matrix
+
+
+#Running the loop for all the images
+extract_features <- function(directory){
+  
+  all.files <- list.files(path=directory, pattern=".jpeg") #which file? extracting all jpeg.
+  num.files <- length(all.files) #number of images in the file
+  features <- array(0, dim=c(num.files, 4, 4, 512)) #forming the empty array and giving it dimensions
+  inputs <- array(0, dim=c(num.files, 128, 128, 3)) #empty box of 128x128
+  for(i in 1:num.files){
+    #same as im<- part:   trying to form all images in the same size 128x128
+    img <- image_load(file.path(directory,all.files[i]), target_size = c(128,128)) %>%
+      image_to_array() %>%
+      array_reshape(c(1, dim(.))) %>%
+      imagenet_preprocess_input(mode="tf")
+    inputs[i,,,] <- img
+  }
+  
+  features <- model %>% predict(inputs)
+  
+  feature_matrix <- gram_matrix(features)
+  
+  return(feature_matrix)
+}
+
+
+
+
+class_features <- extract_features("/Users/anniehu/Desktop/Klee_3pics")
+if(is.na(features)){
+  features <- class_features
+} else {
+  features <- rbind(features, class_features)
+}
+
+save(features, file="paul_style_3pics.Rdata")
+
+
+
+
+
+
+
 library(keras)
 library(purrr)
 library(R6)
@@ -12,7 +131,7 @@ library(LS2Wstat)
 #Keras Basic Idea: Extract features from an arbitrary intermediate layer with VGG19
 base_model <- application_vgg19(weights = 'imagenet')
 summary(base_model)
-#We wanat the conv layers. Conv1, Conv2...
+#We want the conv layers. Conv1, Conv2...
 
 model.a <- keras_model(inputs = base_model$input, 
                      outputs = get_layer(base_model, 'block1_conv1')$output)
